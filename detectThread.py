@@ -81,8 +81,10 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
 
         frame_count += 1
         if frame_count % 10 == 0:
+            frame_to_save = frame.copy()  
+
             with torch.inference_mode():
-                res = yolo(frame, size=IMG_SIZE)
+                res = yolo(frame_to_save, size=IMG_SIZE)
                 det = res.xyxy[0].cpu().numpy() if hasattr(res, "xyxy") else res.pred[0].cpu().numpy()
 
             if det is None or len(det) == 0:
@@ -94,7 +96,7 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                 if x2 <= x1 or y2 <= y1:
                     continue
 
-                crop = frame[y1:y2, x1:x2]
+                crop = frame_to_save[y1:y2, x1:x2]
                 crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
 
                 with torch.no_grad():
@@ -109,7 +111,7 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                     print(f"[DEBUG] {cls_name} similarity: {best_sim:.2f}",flush=True)
                     if best_sim >= SIM_THR and (now_mono - last_saved_time_by_cls[cls_name] > cooldown_seconds):
                         out_dir = os.path.join(target_root, cls_name)
-                        save_image_to_dir(frame, out_dir)
+                        save_image_to_dir(frame_to_save, out_dir)
                         last_saved_time_by_cls[cls_name] = now_mono
                         last_detected_time_by_cls[cls_name] = now_mono
                         print(f"[YOLO Thread] Saved: {cls_name}, similarity={best_sim:.2f}",flush=True)

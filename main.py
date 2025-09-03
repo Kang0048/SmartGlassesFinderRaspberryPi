@@ -30,7 +30,7 @@ def main():
     yolo.iou  = 0.5
     yolo.to('cpu').eval()
 
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("[MAIN] Cannot open camera. Exiting.")
         return

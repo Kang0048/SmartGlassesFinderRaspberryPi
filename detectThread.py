@@ -8,7 +8,7 @@ from match_utils import cosine_similarity
 from firebase_uploader import upload_latest_image
 from torchvision.models import resnet18
 import torchvision.transforms as transforms
-
+import threading
 def make_vec_list(vec_dir: str) -> list:
     new_ref_vecs = []
     for f in sorted(os.listdir(vec_dir)):
@@ -40,7 +40,17 @@ def save_image_to_dir(frame_bgr, out_dir: str) -> str:
     path = os.path.join(out_dir, f"{ts}.jpg")
     cv2.imwrite(path, frame_bgr)
     return path
-
+    
+def async_upload(cls_dir, cls_name):
+    try:
+        upload_latest_image(cls_dir)
+        for f in os.listdir(cls_dir):
+            fp = os.path.join(cls_dir, f)
+            if os.path.isfile(fp):
+                os.remove(fp)
+        print(f"[UPLOAD] Uploaded & cleared: {cls_name}")
+    except Exception as e:
+        print(f"[UPLOAD] Upload failed: {cls_name} -> {e}")
 # -------------------------
 # Detection Loop (Thread)
 # -------------------------
@@ -80,7 +90,7 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
             continue
 
         frame_count += 1
-        if frame_count % 10 == 0:
+        if frame_count % 20 == 0:
             frame_to_save = frame.copy()  
 
             with torch.inference_mode():
@@ -92,10 +102,12 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                 continue
 
             for box in det:
-                x1, y1, x2, y2, conf, cls = box.astype(int)
+                x1, y1, x2, y2, conf, cls = box
+                x1,y1,x2,y2 = map(int, [x1,y1,x2,y2])
                 if x2 <= x1 or y2 <= y1:
                     continue
-
+                if conf <0.4:
+                    continue
                 crop = frame_to_save[y1:y2, x1:x2]
                 crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
 
@@ -120,19 +132,8 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
         for cls_name, t_last in list(last_detected_time_by_cls.items()):
             if t_last > 0 and (now_mono - t_last) > upload_pic:
                 cls_dir = os.path.join(target_root, cls_name)
-                try:
-                    from firebase_uploader import upload_latest_image
-                    upload_latest_image(cls_dir)
-                    for f in os.listdir(cls_dir):
-                        fp = os.path.join(cls_dir, f)
-                        if os.path.isfile(fp):
-                            os.remove(fp)
-                    print(f"[YOLO Thread] Uploaded & cleared: {cls_name}")
-                except Exception as e:
-                    print(f"[YOLO Thread] Upload failed: {cls_name} -> {e}")
-                finally:
-                    last_detected_time_by_cls[cls_name] = 0.0
-   
-
+                threading.Thread(target=async_upload, args=(cls_dir, cls_name), daemon=True).start()
+                last_detected_time_by_cls[cls_name] = 0.0
+                
     cap.release()
     cv2.destroyAllWindows()

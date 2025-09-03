@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os, re, time, queue, json
+import cv2
+import torch
+import numpy as np
+import torchvision.transforms as T
+from torchvision.models import resnet18
+
+# === (NEW) speech ===
+import sounddevice as sd
+from vosk import Model as VoskModel, KaldiRecognizer
+
+# ================== CONFIG ==================
+# Vosk 모델 경로 (영어 명령 "save A as B" 사용)
+VOSK_MODEL_DIR = "/home/pi/models/vosk-model-small-en-us"  # or "...-0.15"
+
+# YOLO 설정
+REPO_DIR = "/home/pi/yolo-object-matcher/yolov5"
+WEIGHTS  = "/home/pi/yolo-object-matcher/yolov5n.pt"
+IMG_SIZE = 640
+PAD = 0.05
+
+# 오디오 설정
+SAMPLE_RATE = 16000
+BLOCKSIZE   = 4000
+
+# ============================================
+
+def ensure_object_dir(label: str):
+    base = os.path.join("objects", label)
+    images_dir  = os.path.join(base, "images")
+    vectors_dir = os.path.join(base, "vectors")
+    os.makedirs(images_dir, exist_ok=True)
+    os.makedirs(vectors_dir, exist_ok=True)
+    return {"base": base, "images": images_dir, "vectors": vectors_dir}
+
+def sanitize(name: str) -> str:
+    # 파일/폴더명 안전하게
+    safe = re.sub(r"[^a-zA-Z0-9_\- ]+", " ", name.strip())
+    safe = re.sub(r"\s+", "_", safe).strip("_")
+    return safe or "unnamed"
+
+def pad_clip(x1, y1, x2, y2, W, H, pad=0.05):
+    w, h = x2 - x1, y2 - y1
+    wpad, hpad = int(w * pad), int(h * pad)
+    x1 = max(0, int(x1 - wpad))
+    y1 = max(0, int(y1 - hpad))
+    x2 = min(W-1, int(x2 + wpad))
+    y2 = min(H-1, int(y2 + hpad))
+    return x1, y1, x2, y2
+
+def choose_center_idx(det, W, H):
+    cx = (det[:, 0] + det[:, 2]) / 2.0
+    cy = (det[:, 1] + det[:, 3]) / 2.0
+    d2 = (cx - W/2.0)**2 + (cy - H/2.0)**2
+    return int(np.argmin(d2))
+
+# ---------- load models ----------
+print("[INIT] Loading YOLO…")
+yolo = torch.hub.load(REPO_DIR, 'custom', path=WEIGHTS, source='local')
+yolo.conf = 0.1
+yolo.iou  = 0.5
+yolo.to('cpu').eval()
+
+print("[INIT] Loading embedder…")
+embedder = resnet18(weights="IMAGENET1K_V1")
+embedder.fc = torch.nn.Identity()
+embedder.eval()
+
+transform = T.Compose([
+    T.ToPILImage(),
+    T.Resize((224, 224)),
+    T.ToTensor(),
+    T.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225]),
+])
+
+print("[INIT] Loading Vosk model…")
+if not os.path.isdir(VOSK_MODEL_DIR):
+    raise RuntimeError(f"Vosk model not found: {VOSK_MODEL_DIR}")
+vosk_model = VoskModel(VOSK_MODEL_DIR)
+rec = KaldiRecognizer(vosk_model, SAMPLE_RATE)   # 자유 입력 (이름까지 말해야 해서 grammar X)
+
+# ---------- camera ----------
+cap = cv2.VideoCapture(0)
+# (원래 코드 유지)
+cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+cap.set(cv2.CAP_PROP_EXPOSURE, -4)
+cap.set(cv2.CAP_PROP_BRIGHTNESS, 150)
+
+if not cap.isOpened():
+    print("[ERROR] Camera open failed")
+    raise SystemExit
+
+# ---------- audio queue ----------
+audio_q: "queue.Queue[bytes]" = queue.Queue()
+def audio_cb(indata, frames, t, status):
+    if status:
+        print("[AUDIO]", status, flush=True)
+    audio_q.put(bytes(indata))
+
+# ---------- core helpers ----------
+def save_image_and_vector(frame, label: str, name: str):
+    # label = A, name = B
+    label_s = sanitize(label)
+    name_s  = sanitize(name)
+
+    dirs = ensure_object_dir(label_s)
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    base = f"{name_s}_{timestamp}"
+
+    img_path = os.path.join(dirs["images"], f"{base}.jpg")
+    cv2.imwrite(img_path, frame)
+    print(f"[SAVE] image: {img_path}")
+
+    # YOLO crop → embedding
+    H, W = frame.shape[:2]
+    with torch.inference_mode():
+        res = yolo(frame, size=IMG_SIZE)
+        det = res.xyxy[0].cpu().numpy() if hasattr(res, 'xyxy') else res.pred[0].cpu().numpy()
+
+    if det is None or len(det) == 0:
+        print("[YOLO] no box captured -> skip vector")
+        return
+
+    idx = 0 if len(det) == 1 else choose_center_idx(det, W, H)
+    x1, y1, x2, y2 = det[idx, :4].astype(int)
+    x1, y1, x2, y2 = pad_clip(x1, y1, x2, y2, W, H, PAD)
+
+    if x2 <= x1 or y2 <= y1:
+        print("[YOLO] invalid crop -> skip vector")
+        return
+
+    crop = frame[y1:y2, x1:x2]
+    crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    with torch.inference_mode():
+        vec = embedder(transform(crop_rgb).unsqueeze(0)).squeeze().cpu()
+
+    vec_path = os.path.join(dirs["vectors"], f"{base}.pt")
+    torch.save(vec, vec_path)
+    print(f"[SAVE] vector: {vec_path}")
+
+def parse_command(text: str):
+    """
+    ONLY command supported:
+      "save A as B"
+      - A: class/label (folder under objects/)
+      - B: file base name
+    returns (A, B) or None
+    """
+    t = text.strip().lower()
+    # 허용: save <A> as <B>
+    m = re.search(r"\bsave\s+(.+?)\s+as\s+(.+)$", t)
+    if not m:
+        return None
+    A = m.group(1).strip()
+    B = m.group(2).strip()
+    return A, B
+
+print('🎤 Say: "save A as B" (e.g., "save wallet as my first") | Press Q to quit')
+
+# ---------- main loop ----------
+try:
+    with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=BLOCKSIZE,
+                           dtype='int16', channels=1, callback=audio_cb):
+        while True:
+            # 카메라 프레임 표시
+            ok, frame = cap.read()
+            if not ok:
+                print("[WARN] failed to read frame")
+                continue
+
+            cv2.imshow("Voice Capture (save A as B) - Press 'q' to quit", frame)
+
+            # 키보드 종료 (q)
+            if (cv2.waitKey(1) & 0xFF) == ord('q'):
+                print("stop capture.")
+                break
+
+            # 오디오 패킷 처리
+            while not audio_q.empty():
+                data = audio_q.get_nowait()
+                if rec.AcceptWaveform(data):
+                    res = json.loads(rec.Result())
+                    text = res.get("text", "").strip()
+                    if text:
+                        print("Recognized:", text)
+                        parsed = parse_command(text)
+                        if parsed:
+                            A, B = parsed
+                            print(f"[CMD] save {A} as {B}")
+                            # 현재 프레임을 저장/벡터추출
+                            save_image_and_vector(frame, A, B)
+
+finally:
+    cap.release()
+    cv2.destroyAllWindows()

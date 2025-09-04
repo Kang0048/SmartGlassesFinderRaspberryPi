@@ -42,6 +42,13 @@
 pip install firebase-admin
 pip install opencv-python
 pip install torch torchvision numpy
+```
+### 2. YOLOv5 모델 다운로드
+1. YOLOv5 공식 GitHub에서 사전 학습 모델(yolov5s.pt 등)을 다운로드합니다.
+2. 다운로드한 모델 파일을 프로젝트 디렉토리에 저장합니다.
 
-
- ### 2. 필수 라이브러리 설치  
+### 3. Firebase 설정
+1. Firebase 콘솔에서 새 프로젝트 생성
+2. Cloud Storage 활성화
+3. 서비스 계정 키 생성 → your-service-account.json 파일 다운로드
+4. 해당 JSON 파일을 프로젝트 폴더에 추가

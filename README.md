@@ -42,3 +42,6 @@
 pip install firebase-admin
 pip install opencv-python
 pip install torch torchvision numpy
+
+
+ ### 2. 필수 라이브러리 설치  

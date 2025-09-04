@@ -32,7 +32,7 @@
 ## AI Models & Processing
 
 <p align="left">
-  <img src="https://img.shields.io/badge/YOLO-FF6F00?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVQYV2NkwA7+//8/AwMDAwACxQG/X2vH2wAAAABJRU5ErkJggg=="/>
+  <img src="https://img.shields.io/badge/YOLOv5-FF6F00?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVQYV2NkwA7+//8/AwMDAwACxQG/X2vH2wAAAABJRU5ErkJggg=="/>
   <img src="https://img.shields.io/badge/ResNet18-FF6F00?style=flat"/>
 </p>
 

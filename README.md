@@ -71,5 +71,5 @@ python main.py
 
 ### 관련 저장소
 1. Raspberry Pi (YOLO + Firebase) → [(현재 저장소)](https://github.com/Kang0048/SmartGlassesFinderRaspberryPi)
-2. Node.js 서버 → Node.js Repo [링크](https://github.com/Kang0048/SmartGlassesFinderNode.js)
-3. Android 앱 → Android Repo [링크](https://github.com/Kang0048/SmartGlassesFinder)
+2. Node.js 서버 → [링크](https://github.com/Kang0048/SmartGlassesFinderNode.js)
+3. Android 앱 → [링크](https://github.com/Kang0048/SmartGlassesFinder)

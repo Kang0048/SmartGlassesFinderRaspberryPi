@@ -4,6 +4,14 @@
 
 ---
 
+## SmartGlassesFinder 개발팀 소개
+| 강기영 |
+|:---:|
+| <img src="https://github.com/kang0048.png" width="120" height="120"/> | 
+| [@youngK](https://github.com/Kang0048)|
+| 한성대학교 컴퓨터공학과 4학년 |
+
+
 ##  주요 기능  
 
 - **실시간 객체 인식**  
@@ -57,3 +65,11 @@ pip install torch torchvision numpy
 ```bash
 python main.py
 ```
+
+
+
+
+### 관련 저장소
+1. Raspberry Pi (YOLO + Firebase) → [(현재 저장소)](https://github.com/Kang0048/SmartGlassesFinderRaspberryPi)
+2. Node.js 서버 → Node.js Repo [링크](https://github.com/Kang0048/SmartGlassesFinderNode.js)
+3. Android 앱 → Android Repo [링크](https://github.com/Kang0048/SmartGlassesFinder)

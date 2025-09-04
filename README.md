@@ -52,3 +52,8 @@ pip install torch torchvision numpy
 2. Cloud Storage 활성화
 3. 서비스 계정 키 생성 → your-service-account.json 파일 다운로드
 4. 해당 JSON 파일을 프로젝트 폴더에 추가
+
+### 4. 실행
+```bash
+python main.py
+```

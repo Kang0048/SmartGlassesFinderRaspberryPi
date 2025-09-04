@@ -11,6 +11,31 @@
 | [@youngK](https://github.com/Kang0048)|
 | 한성대학교 컴퓨터공학과 4학년 |
 
+## 기술 스택
+
+## Environment & Platform
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Android-3DDC84?style=flat&logo=android&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Raspberry_Pi-A22846?style=flat&logo=raspberrypi&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white"/>
+</p>
+
+## Languages & Frameworks
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=flat&logo=kotlin&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white"/>
+  <img src="https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=javascript&logoColor=black"/>
+</p>
+
+## AI Models & Processing
+
+<p align="left">
+  <img src="https://img.shields.io/badge/YOLO-FF6F00?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAFUlEQVQYV2NkwA7+//8/AwMDAwACxQG/X2vH2wAAAABJRU5ErkJggg=="/>
+  <img src="https://img.shields.io/badge/ResNet18-FF6F00?style=flat"/>
+</p>
+
 
 ##  주요 기능  
 

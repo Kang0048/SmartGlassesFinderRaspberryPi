@@ -3,7 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, storage
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate("smartglassesfinder-firebase-adminsdk-fbsvc-b822b9f07c.json")
+    cred = credentials.Certificate("smartglassesfinder-firebase-adminsdk-fbsvc-76314a1df7.json")
     firebase_admin.initialize_app(cred, {
         'storageBucket': 'smartglassesfinder.firebasestorage.app'
     })
@@ -35,3 +35,4 @@ def upload_latest_image(folder_path : str):
     print(f"Firebase uploaded : {latest_file}")
     print(f"URL: {blob.public_url}")
     return blob.public_url
+

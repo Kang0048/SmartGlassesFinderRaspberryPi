@@ -88,11 +88,13 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
             ret, frame = cap.read()
         if not ret:
             continue
-
+        frame_to_show = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+      
+        
         frame_count += 1
-        if frame_count % 20 == 0:
-            frame_to_save = frame.copy()  
-
+        if frame_count % 10 == 0:
+            frame_to_save = frame.copy()   
+            
             with torch.inference_mode():
                 res = yolo(frame_to_save, size=IMG_SIZE)
                 det = res.xyxy[0].cpu().numpy() if hasattr(res, "xyxy") else res.pred[0].cpu().numpy()
@@ -122,13 +124,14 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                     best_sim = max(sims) if sims else -1.0
                     print(f"[DEBUG] {cls_name} similarity: {best_sim:.2f}",flush=True)
                     if best_sim >= SIM_THR and (now_mono - last_saved_time_by_cls[cls_name] > cooldown_seconds):
+                        cv2.rectangle(frame_to_show, (x1, y1), (x2, y2), (0, 255, 0), 2)  # 녹색 박스
+                        cv2.putText(frame_to_show, f"{cls_name} {best_sim:.2f}",
+                        (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                         out_dir = os.path.join(target_root, cls_name)
                         save_image_to_dir(frame_to_save, out_dir)
                         last_saved_time_by_cls[cls_name] = now_mono
                         last_detected_time_by_cls[cls_name] = now_mono
                         print(f"[YOLO Thread] Saved: {cls_name}, similarity={best_sim:.2f}",flush=True)
-
-        now_mono = time.monotonic()
         for cls_name, t_last in list(last_detected_time_by_cls.items()):
             if t_last > 0 and (now_mono - t_last) > upload_pic:
                 cls_dir = os.path.join(target_root, cls_name)

@@ -10,18 +10,22 @@ from torchvision.models import resnet18
 import sounddevice as sd
 from vosk import Model as VoskModel, KaldiRecognizer
 
-OBJECTS_ROOT   = "/home/pi/yolo-object-matcher/objects"
-REPO_DIR       = "/home/pi/yolo-object-matcher/yolov5"
-WEIGHTS        = "/home/pi/yolo-object-matcher/yolov5n.pt"
+OBJECTS_ROOT   = "/home/pi/SmartGlassesFinderRaspberryPi/objects"
+REPO_DIR       = "/home/pi/SmartGlassesFinderRaspberryPi/yolov5"
+WEIGHTS        = "/home/pi/SmartGlassesFinderRaspberryPi/yolov5n.pt"
+VOSK_MODEL_DIR = "/home/pi/models/vosk-model-small-en-us-0.15"
+
 IMG_SIZE       = 640
 PAD            = 0.05
 SR             = 16000
-VOSK_MODEL_DIR = "/home/pi/models/vosk-model-small-en-us-0.15"
 
-def ensure_label_dir(label: str) -> str:
+def ensure_label_dirs(label: str):
     base = os.path.join(OBJECTS_ROOT, label)
-    os.makedirs(base, exist_ok=True)
-    return base
+    images = os.path.join(base, "images")
+    vectors = os.path.join(base, "vectors")
+    os.makedirs(images, exist_ok=True)
+    os.makedirs(vectors, exist_ok=True)
+    return {"base": base, "images": images, "vectors": vectors}
 
 def pad_clip(x1, y1, x2, y2, W, H, pad=0.05):
     w, h = x2 - x1, y2 - y1
@@ -44,11 +48,11 @@ def sanitize_label(text: str) -> str:
     text = re.sub(r"[^a-z0-9\-_]+", "", text)
     return text[:32] if text else "item"
 
-def next_index(label_dir: str, label: str) -> int:
+def next_index(images_dir: str, label: str) -> int:
     pat = re.compile(rf"^{re.escape(label)}_(\d+)\.jpg$")
     max_idx = 0
-    if os.path.isdir(label_dir):
-        for fn in os.listdir(label_dir):
+    if os.path.isdir(images_dir):
+        for fn in os.listdir(images_dir):
             m = pat.match(fn)
             if m:
                 try:
@@ -59,9 +63,9 @@ def next_index(label_dir: str, label: str) -> int:
                     pass
     return max_idx + 1
 
-def save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, idx):
+def save_capture_and_vector(frame, yolo, embedder, transform, dirs, label, idx):
     img_name = f"{label}_{idx}.jpg"
-    img_path = os.path.join(label_dir, img_name)
+    img_path = os.path.join(dirs["images"], img_name)
     cv2.imwrite(img_path, frame)
     print(f"saved image: {img_path}")
 
@@ -83,7 +87,7 @@ def save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, 
         crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
         with torch.inference_mode():
             vec = embedder(transform(crop_rgb).unsqueeze(0)).squeeze().cpu()
-        vec_path = os.path.join(label_dir, f"{label}_{idx}.pt")
+        vec_path = os.path.join(dirs["vectors"], f"{label}_{idx}.pt")
         torch.save(vec, vec_path)
         print(f"vector saved: {vec_path}")
     else:
@@ -93,6 +97,7 @@ def init_audio():
     if not os.path.isdir(VOSK_MODEL_DIR):
         print(f"Vosk model not found: {VOSK_MODEL_DIR}")
         sys.exit(1)
+    print('audio ready')
     model_vosk = VoskModel(VOSK_MODEL_DIR)
     recognizer = KaldiRecognizer(model_vosk, SR)
     recognizer.SetWords(True)
@@ -105,6 +110,9 @@ def init_audio():
     )
     stream.start()
     return recognizer, audio_q, stream
+
+def tokens_set(text: str):
+    return set(re.findall(r"[a-z0-9\-_]+", text))
 
 def main():
     print("Loading YOLO...")
@@ -138,6 +146,11 @@ def main():
 
     state = "idle"
     pending_label = None
+    armed_label = None
+    armed_dirs = None
+    img_idx = 1
+    last_capture_ts = 0.0
+    capture_cooldown = 0.6
 
     print("Voice control ready.")
 
@@ -147,7 +160,7 @@ def main():
             if not ret:
                 print("Failed to read frame.")
                 break
-
+            print('test')
             if not audio_q.empty():
                 data = audio_q.get()
                 if recognizer.AcceptWaveform(data):
@@ -157,40 +170,55 @@ def main():
                         continue
 
                     print(f"[voice] {text}")
+                    toks = tokens_set(text)
 
-                    if "quit" in text or "exit" in text:
+                    if "quit" in toks or "exit" in toks:
                         print("Exit by voice command.")
                         break
 
                     if state == "idle":
-                        if re.search(r"\bhi\b", text):
+                        if "hi" in toks:
                             state = "await_label"
                             print("Armed. Say one word for label.")
 
                     elif state == "await_label":
-                        tokens = re.findall(r"[a-z0-9\-_]+", text)
-                        label = sanitize_label(tokens[0]) if tokens else None
+                        words = [w for w in re.findall(r"[a-z0-9\-_]+", text)]
+                        label = sanitize_label(words[0]) if words else None
                         if label:
                             pending_label = label
                             state = "confirm"
                             print(f"Did you say '{pending_label}'? Say yes or no.")
 
                     elif state == "confirm":
-                        if re.search(r"\byes\b", text):
-                            label = pending_label
+                        if "yes" in toks:
+                            armed_label = pending_label
                             pending_label = None
-                            label_dir = ensure_label_dir(label)
-                            idx = next_index(label_dir, label)
-                            print(f"Confirmed. Label '{label}' → {label_dir}")
-                            save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, idx)
-                            state = "idle"
-                            print("Back to idle. Say 'hi' again.")
-                        elif re.search(r"\bno\b", text):
-                            print("Okay, say the label again.")
+                            armed_dirs = ensure_label_dirs(armed_label)
+                            img_idx = next_index(armed_dirs["images"], armed_label)
+                            state = "ready"
+                            print(f"Ready. Say 'capture' to save, or 'done' to reset.")
+                        elif "no" in toks:
                             pending_label = None
                             state = "await_label"
+                            print("Say the label again.")
                         else:
                             print("Please say yes or no.")
+
+                    elif state == "ready":
+                        now = time.time()
+                        if "capture" in toks and (now - last_capture_ts) >= capture_cooldown:
+                            save_capture_and_vector(frame, yolo, embedder, transform, armed_dirs, armed_label, img_idx)
+                            img_idx += 1
+                            last_capture_ts = now
+                        if "done" in toks:
+                            print("Resetting to idle state.")
+                            armed_label = None
+                            armed_dirs = None
+                            img_idx = 1
+                            state = "idle"
+                        if "hi" in toks:
+                            state = "await_label"
+                            print("Armed. Say one word for label.")
 
             time.sleep(0.01)
 

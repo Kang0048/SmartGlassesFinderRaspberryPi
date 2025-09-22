@@ -8,19 +8,14 @@ import torchvision.transforms as transforms
 import os
 from captureThread import init_audio
 from firebase_utils import init_firebase, download_detected_matches
-
+from match_utils import make_vector_folder 
 source_root = '/home/pi/SmartGlassesFinderRaspberryPi/objects'
 target_root = '/home/pi/SmartGlassesFinderRaspberryPi/detected_matches'
 REPO_DIR    = '/home/pi//SmartGlassesFinderRaspberryPi/yolov5'
 WEIGHTS     = '/home/pi/SmartGlassesFinderRaspberryPi/yolov5n.pt'
-FIREBASE_CRED_PATH = '/home/pi/SmartGlassesFinderRaspberryPi/smartglassesfinder-firebase-adminsdk-fbsvc-76314a1df7'
-BUCKET_NAME = 'smartglassesfinder.firebasestorage.app'
+FIREBASE_CRED_PATH = '/home/pi/SmartGlassesFinderRaspberryPi/smartglassesfinder-firebase-adminsdk-fbsvc-6b2ce3da61.json'
+BUCKET_NAME = 'smartglassesfinder.appspot.com'
 def main():
-    
-    init_firebase(FIREBASE_CRED_PATH, BUCKET_NAME)
-    download_detected_matches(source_root)
-    print("firebase picture downloaded")
-    
     print("[MAIN] Loading embedder...")
     embedder = resnet18(pretrained=True)
     embedder.fc = torch.nn.Identity()
@@ -38,6 +33,11 @@ def main():
     yolo.iou  = 0.5
     yolo.to('cpu').eval()
 
+    init_firebase(FIREBASE_CRED_PATH, BUCKET_NAME)
+    download_detected_matches(source_root)
+    print("firebase picture downloaded")
+    
+    make_vector_folder(source_root, yolo, embedder, transform)
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("[MAIN] Cannot open camera. Exiting.")

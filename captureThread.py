@@ -1,3 +1,4 @@
+
 # voiceThread.py
 import threading, queue, time, os, sys, re, json, unicodedata, cv2, torch
 from vosk import Model as VoskModel, KaldiRecognizer

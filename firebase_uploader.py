@@ -1,7 +1,7 @@
 import os
 import firebase_admin
-from firebase_admin import credentials, storage
-
+from firebase_admin import credentials, storage, firestore
+import time
 if not firebase_admin._apps:
     cred = credentials.Certificate("smartglassesfinder-firebase-adminsdk-fbsvc-6b2ce3da61.json")
     firebase_admin.initialize_app(cred, {
@@ -36,3 +36,36 @@ def upload_latest_image(folder_path : str):
     print(f"URL: {blob.public_url}")
     return blob.public_url
 
+def upload_object_image(local_path:str, label:str) :
+    try:
+       label_path = os.path.join(local_path, "images")
+       if not os.path.exists(label_path):
+            print(f"[firebase] no images folder: {label_path}")
+            return
+       
+       bucket = storage.bucket()
+       db = firestore.client()
+
+       for img_file in os.listdir(label_path) :
+           if not img_file.lower().endswith((".jpg", ".jpeg", ".png")):
+               continue 
+           img_path = os.path.join(label_path,img_file)
+  
+           ts = int(time.time()*1000)
+           blob_path = f"objects/{label}/{ts}_{img_file}.jpg"
+           blob = bucket.blob(blob_path)
+           blob.upload_from_filename(img_path)
+           blob.make_public()
+           url = blob.public_url
+ 
+           doc = {
+               "name": label,
+               "imageUrl": url,
+               "timestamp":ts
+           }
+           db.collection("detected_objects").document(label).set(doc)
+           print(f"[firebase] upload: {label}, url = {url}")
+    except Exception as e:
+           print(f"[firebase] upload failed: {e}")
+
+  

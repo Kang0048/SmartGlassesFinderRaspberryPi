@@ -1,4 +1,3 @@
-
 # voiceThread.py
 import threading, queue, time, os, sys, re, json, unicodedata, cv2, torch
 from vosk import Model as VoskModel, KaldiRecognizer
@@ -6,6 +5,7 @@ import sounddevice as sd
 import numpy as np
 import os
 from gtts import gTTS
+from firebase_uploader import upload_object_image
 VOSK_MODEL_DIR = "/home/pi/models/vosk-model-small-en-us-0.15"
 SR = 16000
 PAD = 0.05
@@ -102,9 +102,11 @@ def init_audio():
         audio_q.put(bytes(indata))
     stream = sd.RawInputStream(
         samplerate=SR, blocksize=8000, dtype="int16",
-        channels=1, callback=audio_callback
+        channels=1,callback=audio_callback
     )
     stream.start()
+    print(stream)
+    print(stream.active)
     return recognizer, audio_q, stream
 
 def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,recognizer, audio_q, stream):
@@ -177,8 +179,11 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                         if re.search(r"\bdone\b", text):
                             print(f"[voiceThread] Done capturing for label '{pending_label}'.")
                             speak("finshed tracking system start",stream)
-                            pending_label = None
                             state = "idle"
+                            label = pending_label
+                            img_path = os.path.join(OBJECTS_ROOT,label)
+                            threading.Thread(target = upload_object_image, args = (img_path, label), daemon=True).start()
+                            pending_label = None
                             pause_event.clear()
                         elif re.search(r"\bgood\b", text):
                             label_dir = ensure_label_dir(pending_label)
@@ -231,5 +236,9 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
     finally:
         try:
             stream.stop()
+        except:
+            pass
+        try:
+            stream.close()
         except:
             pass

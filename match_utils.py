@@ -34,3 +34,14 @@ def make_vector_folder(objects_root : str, yolo, embedder, transform) :
                continue
 
             save_capture_and_vector(img, yolo, embedder, transform, label_dir, "test", number)
+
+
+def find_working_camera(start_index=0, end_index=10):
+    for i in range(start_index, end_index + 1):
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            print(f"[CAMERA] Camera found at index {i}")
+            return cap
+        cap.release()
+    print("[CAMERA] No working camera found in range.")
+    return None

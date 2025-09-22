@@ -1,0 +1,10 @@
+pcm.!default {
+    type plug
+    slave.pcm "mic"
+}
+
+pcm.mic {
+    type plug
+    slave.pcm "hw:USB_Audio_Device,0"
+}
+

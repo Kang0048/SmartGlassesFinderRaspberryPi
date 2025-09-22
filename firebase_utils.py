@@ -11,6 +11,17 @@ def init_firebase(cred_path: str, bucket_name: str):
         })
     print("[Firebase] Initialized")
 
+def extract_storage_path(image_url: str) -> str:
+    if "firebasestorage.googleapis.com" in image_url:
+        path = image_url.split("/o/")[1].split("?")[0]
+        return urllib.parse.unquote(path)   # objects/picture/xxx.jpg
+    elif "storage.googleapis.com" in image_url:
+        # 라즈베리파이 업로드 URL 형식
+        path = image_url.split("/", 4)[-1]  # objects/cell/xxx.jpg
+        return path
+    else:
+        raise ValueError(f"Unknown URL format: {image_url}")
+
 def download_detected_matches(source_root: str):
     db = firestore.client()
     bucket = storage.bucket()
@@ -33,11 +44,14 @@ def download_detected_matches(source_root: str):
         os.makedirs(label_dir, exist_ok=True)
 
         # Storage blob 다운로드
-        filename = os.path.basename(image_uri)
+        filename = os.path.basename(image_uri.split("?")[0])  # ?token= 제거
         local_path = os.path.join(label_dir, filename)
-        parseUrl = urllib.parse.unquote(image_uri.split("/o/")[1].split("?")[0])
-        blob = bucket.blob(parseUrl)
-        blob.download_to_filename(local_path)
-        print(f"[Firebase] Downloaded: {local_path}")
-
+        
+        try:
+           parseUrl = extract_storage_path(image_uri)
+           blob = bucket.blob(parseUrl)
+           blob.download_to_filename(local_path)
+           print(f"[Firebase] Downloaded: {local_path}")
+        except Exception as e:
+           print(f"[Firebase] : download failed: {e}")
     print("[Firebase] All files downloaded.")

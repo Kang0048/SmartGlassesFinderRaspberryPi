@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 import os
 from captureThread import init_audio
 from firebase_utils import init_firebase, download_detected_matches
-from match_utils import make_vector_folder 
+from match_utils import make_vector_folder, find_working_camera 
 source_root = '/home/pi/SmartGlassesFinderRaspberryPi/objects'
 target_root = '/home/pi/SmartGlassesFinderRaspberryPi/detected_matches'
 REPO_DIR    = '/home/pi//SmartGlassesFinderRaspberryPi/yolov5'
@@ -66,7 +66,7 @@ def main():
             time.sleep(0.1)
     except KeyboardInterrupt:
         print("[MAIN] 종료")
-        t_yolo.join()
+        #t_yolo.join()
         t_voice.join()
         cap.release()
 

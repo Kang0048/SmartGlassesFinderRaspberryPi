@@ -110,6 +110,7 @@ def init_audio():
     return recognizer, audio_q, stream
 
 def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,recognizer, audio_q, stream):
+    sd.default.device = "USB Audio Device"
     state = "idle"
     pending_label = None
     print("[voiceThread] Voice control ready.")
@@ -124,9 +125,10 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                         continue
                     print(f"[voiceThread][voice] {text}")
 
-                    if "quit" in text or "exit" in text:
+                    if "out" in text or "exit" in text:
+                        speak("tracking system start",stream)
                         print("[voiceThread] Exit by voice command.")
-                        break
+                        pause_event.clear()
 
                     # --- 시작 ---
                     if state == "idle" and re.search(r"\bhi\b", text):
@@ -149,7 +151,8 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                         elif "see" in text:
                             speak("say folder name you want to see",stream)
                             state = "see_picture"
-                            
+                        else:
+                            speak("please say again",stream)        
 
                     # --- make flow ---
                     elif state == "await_label":
@@ -159,7 +162,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             pending_label = label
                             state = "confirm"
                             print(f"[voiceThread] Did you say '{pending_label}'? Say yes or no.")
-                            speak(f"Did you say {pending_label}? say yes or no to continue",stream)
+                            speak(f"Did you say {pending_label}? say yes or no",stream)
 
                     elif state == "confirm":
                         if re.search(r"\byes\b", text):
@@ -173,7 +176,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             state = "await_label"
                         else:
                             print("[voiceThread] Please say yes or no.")
-                            speak("please say again",stream)
+                            speak("please say yes or no again",stream)
 
                     elif state == "capturing":
                         if re.search(r"\bdone\b", text):
@@ -195,6 +198,8 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                                     save_capture_and_vector(frame, yolo, embedder, transform, label_dir, pending_label, idx)
                                     print(f"[voiceThread] Captured #{idx} for label '{pending_label}'")
                             speak("say good to take more picture",stream)
+                        else :
+                             speak("please say good or done again",stream)
 
                     # --- delete flow ---
                     elif state == "delete_await_label":
@@ -206,7 +211,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             if os.path.isdir(label_dir):
                                 state = "delete_confirm"
                                 print(f"[voiceThread] Folder '{pending_label}' found. Say yes to delete, no to cancel.")
-                                speak("say yes to delete",stream)
+                                speak(f"{pending_label} folder found. say yes or no to delete",stream)
                             else:
                                 print(f"[voiceThread] Folder '{pending_label}' not found. Say another name.")
                                 speak("folder not found please say again",stream)
@@ -218,7 +223,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                                 import shutil
                                 shutil.rmtree(label_dir)
                                 print(f"[voiceThread] Folder '{pending_label}' deleted.")
-                                speak("folder deleted",stream)
+                                speak(f"{pending_label} folder deleted",stream)
                             except Exception as e:
                                 print(f"[voiceThread] Error deleting '{pending_label}': {e}")
                             pending_label = None
@@ -229,9 +234,10 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             speak("delete cancelled",stream)
                             pending_label = None
                             state = "decision"
-                        else:
-                            print("[voiceThread] Please say yes or no.")
-                            speak("please say again",stream)
+                            speak("back to system",stream)
+                            pause_event.clear()
+                    else :
+                         speak("please say again",stream)
             time.sleep(0.1)
     finally:
         try:

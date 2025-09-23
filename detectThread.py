@@ -55,7 +55,10 @@ def async_upload(cls_dir, cls_name):
 # Detection Loop (Thread)
 # -------------------------
 def detection_loop(yolo, embedder, transform, target_root, source_root, cap, camera_lock, pause_event):
-  
+    
+    last_yolo_time = 0
+    YOLO_INTERVAL = 1.0  # 1초마다 실행  
+    
     IMG_SIZE = 640
     SIM_THR = 0.75
     cooldown_seconds = 10.0
@@ -89,10 +92,10 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
         if not ret:
             continue
         frame_to_show = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-      
         
-        frame_count += 1
-        if frame_count % 10 == 0:
+        now = time.monotonic()  
+        if now - last_yolo_time >= YOLO_INTERVAL:
+            last_yolo_time = now
             frame_to_save = frame.copy()   
             
             with torch.inference_mode():

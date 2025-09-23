@@ -38,7 +38,7 @@ def download_detected_matches(source_root: str):
 
         if not name or not image_uri:
             continue
-        print(f"image uri : {image_uri}")
+        #print(f"image uri : {image_uri}")
         # label 폴더 + images 폴더 생성
         label_dir = os.path.join(source_root, name, "images")
         os.makedirs(label_dir, exist_ok=True)
@@ -51,7 +51,7 @@ def download_detected_matches(source_root: str):
            parseUrl = extract_storage_path(image_uri)
            blob = bucket.blob(parseUrl)
            blob.download_to_filename(local_path)
-           print(f"[Firebase] Downloaded: {local_path}")
+           #print(f"[Firebase] Downloaded: {local_path}")
         except Exception as e:
            print(f"[Firebase] : download failed: {e}")
     print("[Firebase] All files downloaded.")

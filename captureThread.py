@@ -63,6 +63,7 @@ def save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, 
 
     # YOLO detection & vector
     H, W = frame.shape[:2]
+    cx_frame, cy_frame = W//2, H//2
     with torch.inference_mode():
         res = yolo(frame, size=IMG_SIZE)
         det = res.xyxy[0].cpu().numpy() if hasattr(res, "xyxy") else res.pred[0].cpu().numpy()
@@ -71,12 +72,26 @@ def save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, 
         print("[voiceThread] no detection box; skip vector")
         return
 
-    idx_box = 0
-    x1, y1, x2, y2 = det[idx_box, :4].astype(int)
+    min_dist = float('inf')
+    central_box_idx = -1
+
+    for idx_box, box in enumerate(det):
+        x1, y1, x2, y2, conf, yolo_cls = box
+        x_c = (x1 + x2) / 2
+        y_c = (y1 + y2) / 2
+        dist = (x_c - cx_frame)**2 + (y_c - cy_frame)**2  # 거리 제곱
+        if dist < min_dist:
+           min_dist = dist
+           central_box_idx = idx_box
+
+    box = det[central_box_idx]
+    x1, y1, x2, y2, conf, yolo_cls = box
+    x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
+    
     wpad, hpad = int((x2-x1)*PAD), int((y2-y1)*PAD)
     x1, y1 = max(0, x1-wpad), max(0, y1-hpad)
     x2, y2 = min(W-1, x2+wpad), min(H-1, y2+hpad)
-
+    
     if x2 > x1 and y2 > y1:
         crop = frame[y1:y2, x1:x2]
         crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
@@ -87,6 +102,10 @@ def save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, 
         os.makedirs(vec_dir, exist_ok=True)
         vec_path = os.path.join(vec_dir, f"{label}_{idx}.pt")
         torch.save(vec, vec_path)
+        
+        label_path = os.path.join(vec_dir, f"{label}_{idx}.txt")
+        with open (label_path, "w") as f:
+             f.write(str(yolo_cls))
         print(f"[voiceThread] vector saved: {vec_path}")
     else:
         print("[voiceThread] invalid crop box; skip vector")

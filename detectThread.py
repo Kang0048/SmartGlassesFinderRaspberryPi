@@ -19,14 +19,23 @@ def maintain_last_images(folder, max_count=10):
         os.remove(f)
         print(f"[Cleanup] Deleted old file: {f}")
 
-def make_vec_list(vec_dir: str) -> list:
+def make_vec_list(vec_dir: str, label:str) -> list:
     new_ref_vecs = []
     for f in sorted(os.listdir(vec_dir)):
         if f.endswith(".pt"):
-            v = torch.load(os.path.join(vec_dir, f), map_location="cpu")
-            if not isinstance(v, torch.Tensor):
-                v = torch.tensor(v)
-            new_ref_vecs.append(v.float())
+          pt_path = os.path.join(vec_dir, f)
+          txt_path = pt_path.replace(".pt", ".txt")
+          v = torch.load(pt_path, map_location="cpu")
+          if not isinstance(v, torch.Tensor):
+            v = torch.tensor(v)
+          v = v.float()
+          if os.path.exists(txt_path):
+            with open(txt_path,"r") as t:
+              yolo_cls = int(t.read().strip())
+          else:
+            yolo_cls = -1
+
+          new_ref_vecs.append((v,yolo_cls))
     print(f"[INFO] vector {len(new_ref_vecs)} loaded from {vec_dir}")
     return new_ref_vecs
 
@@ -39,7 +48,7 @@ def make_ref_by_class(source_root: str) -> dict:
         class_vec_dir = os.path.join(class_dir, "vectors")
         if not os.path.isdir(class_vec_dir):
             continue
-        vecs = make_vec_list(class_vec_dir)
+        vecs = make_vec_list(class_vec_dir, class_name)
         if vecs:
             ref_by_class[class_name] = vecs
     return ref_by_class
@@ -131,27 +140,36 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
 
                 with torch.no_grad():
                     q = embedder(transform(crop_rgb).unsqueeze(0)).squeeze().float()
-
+               
+                yolo_class_confidences = {str(int(int(cls_id))): float(conf) for cls_id, conf in zip(det[:, 5], det[:, 4])}
+                top3_cls = sorted(yolo_class_confidences.items(), key=lambda x: x[1], reverse=True)[:3]
+                
                 now_mono = time.monotonic()
-                for cls_name, cls_ref_vecs in local_ref_by_class.items():
-                    if not cls_ref_vecs:
-                        continue
-                    sims = [cosine_similarity(q, ref) for ref in cls_ref_vecs]
-                    best_sim = max(sims) if sims else -1.0
-                    print(f"[DEBUG] {cls_name} similarity: {best_sim:.2f}",flush=True)
-                    if best_sim >= SIM_THR and (now_mono - last_saved_time_by_cls[cls_name] > cooldown_seconds):
-                        cv2.rectangle(frame_to_show, (x1, y1), (x2, y2), (0, 255, 0), 2)  # 녹색 박스
-                        cv2.putText(frame_to_show, f"{cls_name} {best_sim:.2f}",
-                        (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                for cls_id, cls_conf in top3_cls:
+                  found = False
+                  for label_name, ref_vecs in local_ref_by_class.items():
+                    for ref_vec, ref_cls in ref_vecs:
+                      if int(ref_cls) != int(cls_id):
+                        continue 
 
-                        out_dir = os.path.join(target_root, cls_name)
-                        last_dir = os.path.join(LAST_ROOT,cls_name)
+                      sims = cosine_similarity(q, ref_vec)
+                      if sims >= SIM_THR and (now_mono - last_saved_time_by_cls[label_name] > cooldown_seconds):
+                        cv2.rectangle(frame_to_show, (x1, y1), (x2, y2), (0, 255, 0), 2)  # 녹색 박스
+                        cv2.putText(frame_to_show, f"{label_name} {sims:.2f}",(x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+                        out_dir = os.path.join(target_root, label_name)
+                        last_dir = os.path.join(LAST_ROOT,label_name)
                         save_image_to_dir(frame_to_save, out_dir)
                         save_image_to_dir(frame_to_save, last_dir)
                         maintain_last_images(last_dir,max_count = 10)
-                        last_saved_time_by_cls[cls_name] = now_mono
-                        last_detected_time_by_cls[cls_name] = now_mono
-                        print(f"[YOLO Thread] Saved: {cls_name}, similarity={best_sim:.2f}",flush=True)
+                        last_saved_time_by_cls[label_name] = now_mono
+                        last_detected_time_by_cls[label_name] = now_mono
+                        print(f"[YOLO Thread] Saved: {label_name}, similarity={best_sim:.2f}",flush=True)
+                        found = True
+                        break
+                    if found:
+                        break
+                  
         
         for cls_name, t_last in list(last_detected_time_by_cls.items()):
             if t_last > 0 and (now_mono - t_last) > upload_pic:

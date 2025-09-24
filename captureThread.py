@@ -77,13 +77,17 @@ def save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, 
 
     for idx_box, box in enumerate(det):
         x1, y1, x2, y2, conf, yolo_cls = box
+        if conf < 0.4:   # confidence 0.4 이하 박스는 제외
+           continue
         x_c = (x1 + x2) / 2
         y_c = (y1 + y2) / 2
         dist = (x_c - cx_frame)**2 + (y_c - cy_frame)**2  # 거리 제곱
         if dist < min_dist:
            min_dist = dist
            central_box_idx = idx_box
-
+    if central_box == -1:
+        print("no high confidence vector skip vector")
+    return
     box = det[central_box_idx]
     x1, y1, x2, y2, conf, yolo_cls = box
     x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])

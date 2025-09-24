@@ -5,6 +5,7 @@ import sounddevice as sd
 import numpy as np
 import os
 from gtts import gTTS
+import shutil
 from firebase_uploader import upload_object_image
 VOSK_MODEL_DIR = "/home/pi/models/vosk-model-small-en-us-0.15"
 SR = 16000
@@ -134,6 +135,9 @@ def init_audio():
     return recognizer, audio_q, stream
 
 def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,recognizer, audio_q, stream, show_queue):
+    if os.path.exists(LAST_ROOT):
+        shutil.rmtree(LAST_ROOT)
+    os.makedirs(SOURCE_ROOT, exist_ok=True)
     sd.default.device = "USB Audio Device"
     pending_label = None
     state = "idle"

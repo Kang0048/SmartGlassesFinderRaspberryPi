@@ -9,6 +9,16 @@ from firebase_uploader import upload_latest_image
 from torchvision.models import resnet18
 import torchvision.transforms as transforms
 import threading
+
+def maintain_last_images(folder, max_count=10):
+    files = [os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
+    if len(files) <= max_count:
+        return
+    files.sort(key=lambda x: os.path.getmtime(x))
+    for f in files[:-max_count]:
+        os.remove(f)
+        print(f"[Cleanup] Deleted old file: {f}")
+
 def make_vec_list(vec_dir: str) -> list:
     new_ref_vecs = []
     for f in sorted(os.listdir(vec_dir)):
@@ -40,7 +50,7 @@ def save_image_to_dir(frame_bgr, out_dir: str) -> str:
     path = os.path.join(out_dir, f"{ts}.jpg")
     cv2.imwrite(path, frame_bgr)
     return path
-    
+
 def async_upload(cls_dir, cls_name):
     try:
         upload_latest_image(cls_dir)
@@ -54,16 +64,17 @@ def async_upload(cls_dir, cls_name):
 # -------------------------
 # Detection Loop (Thread)
 # -------------------------
-def detection_loop(yolo, embedder, transform, target_root, source_root, cap, camera_lock, pause_event):
-    
+def detection_loop(yolo, embedder, transform, target_root, source_root, cap, camera_lock, pause_event, frame_queue):
+
+    LAST_ROOT = "/home/pi/SmartGlassesFinderRaspberryPi/last"
     last_yolo_time = 0
     YOLO_INTERVAL = 1.0  # 1초마다 실행  
-    
     IMG_SIZE = 640
     SIM_THR = 0.75
     cooldown_seconds = 10.0
     upload_pic = 60.0
-
+    LCD_WIDTH = 480
+    LCD_HEIGHT = 320
     last_saved_time_by_cls = defaultdict(float)
     last_detected_time_by_cls = defaultdict(float)
     folder_initialized = False 
@@ -83,7 +94,6 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
             local_ref_by_class = make_ref_by_class(source_root)
             for cls_name in local_ref_by_class.keys():
                 os.makedirs(os.path.join(target_root, cls_name), exist_ok=True)
-            
             folder_initialized = True
             print("[YOLO Thread] Target folders initialized")
 
@@ -91,13 +101,16 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
             ret, frame = cap.read()
         if not ret:
             continue
-        frame_to_show = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-        
-        now = time.monotonic()  
+        frame_to_show = frame.copy()
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if not frame_queue.full():  # 큐가 가득 차면 덮어쓰기 방지
+            frame_queue.put(gray)
+
+        time.sleep(0.01)  # CPU 절약
+        now = time.monotonic()
         if now - last_yolo_time >= YOLO_INTERVAL:
             last_yolo_time = now
-            frame_to_save = frame.copy()   
-            
+            frame_to_save = frame.copy()
             with torch.inference_mode():
                 res = yolo(frame_to_save, size=IMG_SIZE)
                 det = res.xyxy[0].cpu().numpy() if hasattr(res, "xyxy") else res.pred[0].cpu().numpy()
@@ -130,11 +143,16 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                         cv2.rectangle(frame_to_show, (x1, y1), (x2, y2), (0, 255, 0), 2)  # 녹색 박스
                         cv2.putText(frame_to_show, f"{cls_name} {best_sim:.2f}",
                         (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
                         out_dir = os.path.join(target_root, cls_name)
+                        last_dir = os.path.join(LAST_ROOT,cls_name)
                         save_image_to_dir(frame_to_save, out_dir)
+                        save_image_to_dir(frame_to_save, last_dir)
+                        maintain_last_images(last_dir,max_count = 10)
                         last_saved_time_by_cls[cls_name] = now_mono
                         last_detected_time_by_cls[cls_name] = now_mono
                         print(f"[YOLO Thread] Saved: {cls_name}, similarity={best_sim:.2f}",flush=True)
+        
         for cls_name, t_last in list(last_detected_time_by_cls.items()):
             if t_last > 0 and (now_mono - t_last) > upload_pic:
                 cls_dir = os.path.join(target_root, cls_name)

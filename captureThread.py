@@ -10,6 +10,7 @@ VOSK_MODEL_DIR = "/home/pi/models/vosk-model-small-en-us-0.15"
 SR = 16000
 PAD = 0.05
 OBJECTS_ROOT = "/home/pi/SmartGlassesFinderRaspberryPi/objects"
+SOURCE_ROOT = "/home/pi/SmartGlassesFinderRaspberryPi/last"
 IMG_SIZE = 640
 
 def ensure_label_dir(label: str) -> str:
@@ -109,10 +110,10 @@ def init_audio():
     print(stream.active)
     return recognizer, audio_q, stream
 
-def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,recognizer, audio_q, stream):
+def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,recognizer, audio_q, stream, show_queue):
     sd.default.device = "USB Audio Device"
-    state = "idle"
     pending_label = None
+    state = "idle"
     print("[voiceThread] Voice control ready.")
     try:
         while True:
@@ -126,6 +127,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                     print(f"[voiceThread][voice] {text}")
 
                     if "out" in text or "exit" in text:
+                        state = "idle"
                         speak("tracking system start",stream)
                         print("[voiceThread] Exit by voice command.")
                         pause_event.clear()
@@ -163,12 +165,34 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             state = "confirm"
                             print(f"[voiceThread] Did you say '{pending_label}'? Say yes or no.")
                             speak(f"Did you say {pending_label}? say yes or no",stream)
-
+                    elif state == "see_picture":
+                        tokens = re.findall(r"[a-z0-9\-_]+",text)
+                        label = sanitize_label(tokens[0]) if tokens else None
+                        if label:
+                           pending_label = label
+                           label_dir = os.path.join(SOURCE_ROOT, pending_label)
+                           if os.path.isdir(label_dir):
+                                state = "show_pircure"
+                                print(f"[voiceThread] Folder '{pending_label}' found. say out to quit")
+                                speak(f"{pending_label} folder found. say out to quit",stream)
+                                image_files = [f for f in os.listdir(label_dir) if f.lower().endswith((".jpg", ".png", ".jpeg"))]
+                                if image_files:
+                                   print("image founded")
+                                   img_path = os.path.join(label_dir, image_files[0])
+                                   show_queue.put(img_path)
+                                else:
+                                   print(f"[voiceThread] No images found in {label_dir}")
+                           else:
+                               print(f"[voiceThread] Folder '{pending_label}' not found. Say another name.")
+                               speak("folder not found please say again",stream)
+                    elif state == "show_picture":
+                        folder_path = os.path.join()             
                     elif state == "confirm":
                         if re.search(r"\byes\b", text):
                             state = "capturing"
                             print(f"[voiceThread] Capturing started for label '{pending_label}'. Say 'good' to take a photo, 'done' to finish.")
                             speak("say good to take a photo",stream)
+              
                         elif re.search(r"\bno\b", text):
                             print("[voiceThread] Okay, say the label again.")
                             speak("okay say the label again",stream)
@@ -198,8 +222,6 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                                     save_capture_and_vector(frame, yolo, embedder, transform, label_dir, pending_label, idx)
                                     print(f"[voiceThread] Captured #{idx} for label '{pending_label}'")
                             speak("say good to take more picture",stream)
-                        else :
-                             speak("please say good or done again",stream)
 
                     # --- delete flow ---
                     elif state == "delete_await_label":
@@ -236,8 +258,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             state = "decision"
                             speak("back to system",stream)
                             pause_event.clear()
-                    else :
-                         speak("please say again",stream)
+                   
             time.sleep(0.1)
     finally:
         try:

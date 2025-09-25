@@ -3,7 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, storage, firestore
 import time
 if not firebase_admin._apps:
-    cred = credentials.Certificate("smartglassesfinder-firebase-adminsdk-fbsvc-6b2ce3da61.json")
+    cred = credentials.Certificate("smartglassesfinder-firebase-adminsdk-fbsvc-4e79e15856.json")
     firebase_admin.initialize_app(cred, {
         'storageBucket': 'smartglassesfinder.firebasestorage.app'
     })

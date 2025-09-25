@@ -164,7 +164,7 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                         maintain_last_images(last_dir,max_count = 10)
                         last_saved_time_by_cls[label_name] = now_mono
                         last_detected_time_by_cls[label_name] = now_mono
-                        print(f"[YOLO Thread] Saved: {label_name}, similarity={best_sim:.2f}",flush=True)
+                        print(f"[YOLO Thread] Saved: {label_name}, similarity={sims:.2f}",flush=True)
                         found = True
                         break
                     if found:

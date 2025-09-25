@@ -14,10 +14,11 @@ source_root = '/home/pi/SmartGlassesFinderRaspberryPi/objects'
 target_root = '/home/pi/SmartGlassesFinderRaspberryPi/detected_matches'
 REPO_DIR    = '/home/pi/SmartGlassesFinderRaspberryPi/yolov5'
 WEIGHTS     = '/home/pi/SmartGlassesFinderRaspberryPi/yolov5n.pt'
-FIREBASE_CRED_PATH = '/home/pi/SmartGlassesFinderRaspberryPi/smartglassesfinder-firebase-adminsdk-fbsvc-6b2ce3da61.json'
+FIREBASE_CRED_PATH = '/home/pi/SmartGlassesFinderRaspberryPi/smartglassesfinder-firebase-adminsdk-fbsvc-4e79e15856.json'
 BUCKET_NAME = 'smartglassesfinder.appspot.com'
 shared_state = {"mode": "idle"}
 def main():
+    os.makedirs(source_root, exist_ok=True)
     print("[MAIN] Loading embedder...")
     embedder = resnet18(pretrained=True)
     embedder.fc = torch.nn.Identity()
@@ -38,7 +39,6 @@ def main():
     init_firebase(FIREBASE_CRED_PATH, BUCKET_NAME)
     download_detected_matches(source_root)
     print("firebase picture downloaded")
-    
     make_vector_folder(source_root, yolo, embedder, transform)
     cap = cv2.VideoCapture(0)
 
@@ -76,8 +76,9 @@ def main():
       while True:
            if not frame_queue.empty():
               frame = frame_queue.get()
-              cv2.imshow("Camera", frame)
-
+              frame_rotated = cv2.rotate(frame, cv2.ROTATE_180)
+              cv2.imshow("Camera", frame_rotated)
+              
             # 2. 사진 보여주기 처리
            if not show_queue.empty():
               img_path = show_queue.get()

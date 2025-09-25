@@ -7,13 +7,13 @@ import os
 from gtts import gTTS
 import shutil
 from firebase_uploader import upload_object_image
-VOSK_MODEL_DIR = "/home/pi/models/vosk-model-small-en-us-0.15"
+VOSK_MODEL_DIR = "/home/pi/SmartGlassesFinderRaspberryPi/models/vosk-model-small-en-us-0.15"
 SR = 16000
 PAD = 0.05
 OBJECTS_ROOT = "/home/pi/SmartGlassesFinderRaspberryPi/objects"
 SOURCE_ROOT = "/home/pi/SmartGlassesFinderRaspberryPi/last"
 IMG_SIZE = 640
-
+LAST_ROOT = "/home/pi/SmartGlassesFinderRaspberryPi/last"
 def ensure_label_dir(label: str) -> str:
     base = os.path.join(OBJECTS_ROOT, label)
     os.makedirs(base, exist_ok=True)
@@ -78,17 +78,15 @@ def save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, 
 
     for idx_box, box in enumerate(det):
         x1, y1, x2, y2, conf, yolo_cls = box
-        if conf < 0.4:   # confidence 0.4 이하 박스는 제외
-           continue
         x_c = (x1 + x2) / 2
         y_c = (y1 + y2) / 2
         dist = (x_c - cx_frame)**2 + (y_c - cy_frame)**2  # 거리 제곱
         if dist < min_dist:
            min_dist = dist
            central_box_idx = idx_box
-    if central_box == -1:
+    if central_box_idx == -1:
         print("no high confidence vector skip vector")
-    return
+        return
     box = det[central_box_idx]
     x1, y1, x2, y2, conf, yolo_cls = box
     x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
@@ -110,7 +108,7 @@ def save_capture_and_vector(frame, yolo, embedder, transform, label_dir, label, 
         
         label_path = os.path.join(vec_dir, f"{label}_{idx}.txt")
         with open (label_path, "w") as f:
-             f.write(str(yolo_cls))
+             f.write(str(int(yolo_cls)))
         print(f"[voiceThread] vector saved: {vec_path}")
     else:
         print("[voiceThread] invalid crop box; skip vector")
@@ -136,7 +134,7 @@ def init_audio():
 
 def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,recognizer, audio_q, stream, show_queue):
     if os.path.exists(LAST_ROOT):
-        shutil.rmtree(LAST_ROOT)
+       shutil.rmtree(LAST_ROOT)
     os.makedirs(SOURCE_ROOT, exist_ok=True)
     sd.default.device = "USB Audio Device"
     pending_label = None
@@ -153,7 +151,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                         continue
                     print(f"[voiceThread][voice] {text}")
 
-                    if "out" in text or "exit" in text:
+                    if "exit" in text:
                         state = "idle"
                         speak("tracking system start",stream)
                         print("[voiceThread] Exit by voice command.")
@@ -230,7 +228,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             speak("please say yes or no again",stream)
 
                     elif state == "capturing":
-                        if re.search(r"\bdone\b", text):
+                        if re.search(r"\bout\b", text):
                             print(f"[voiceThread] Done capturing for label '{pending_label}'.")
                             speak("finshed tracking system start",stream)
                             state = "idle"
@@ -246,6 +244,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                                 cap.read()  
                                 ret, frame = cap.read()
                                 if ret:
+                                    frame = cv2.rotate(frame, cv2.ROTATE_180)
                                     save_capture_and_vector(frame, yolo, embedder, transform, label_dir, pending_label, idx)
                                     print(f"[voiceThread] Captured #{idx} for label '{pending_label}'")
                             speak("say good to take more picture",stream)
@@ -269,7 +268,6 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                         if re.search(r"\byes\b", text):
                             label_dir = os.path.join(OBJECTS_ROOT, pending_label)
                             try:
-                                import shutil
                                 shutil.rmtree(label_dir)
                                 print(f"[voiceThread] Folder '{pending_label}' deleted.")
                                 speak(f"{pending_label} folder deleted",stream)

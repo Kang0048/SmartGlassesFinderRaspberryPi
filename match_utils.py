@@ -32,8 +32,7 @@ def make_vector_folder(objects_root : str, yolo, embedder, transform) :
             if img is None:
                print("cannot read picture")
                continue
-
-            save_capture_and_vector(img, yolo, embedder, transform, label_dir, "test", number)
+            save_capture_and_vector(img, yolo, embedder, transform, label_dir, obj_name, number)
 
 
 def find_working_camera(start_index=0, end_index=10):

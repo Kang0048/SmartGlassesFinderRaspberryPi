@@ -132,7 +132,7 @@ def init_audio():
     print(stream.active)
     return recognizer, audio_q, stream
 
-def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,recognizer, audio_q, stream, show_queue):
+def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,recognizer, audio_q, stream, frame_queue, show_queue,state):
     if os.path.exists(LAST_ROOT):
        shutil.rmtree(LAST_ROOT)
     os.makedirs(SOURCE_ROOT, exist_ok=True)
@@ -151,7 +151,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                         continue
                     print(f"[voiceThread][voice] {text}")
 
-                    if "exit" in text:
+                    if "exit" in text or "end" in text:
                         state = "idle"
                         speak("tracking system start",stream)
                         print("[voiceThread] Exit by voice command.")
@@ -197,7 +197,6 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                            pending_label = label
                            label_dir = os.path.join(SOURCE_ROOT, pending_label)
                            if os.path.isdir(label_dir):
-                                state = "show_pircure"
                                 print(f"[voiceThread] Folder '{pending_label}' found. say out to quit")
                                 speak(f"{pending_label} folder found. say out to quit",stream)
                                 image_files = [f for f in os.listdir(label_dir) if f.lower().endswith((".jpg", ".png", ".jpeg"))]
@@ -209,14 +208,12 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                                    print(f"[voiceThread] No images found in {label_dir}")
                            else:
                                print(f"[voiceThread] Folder '{pending_label}' not found. Say another name.")
-                               speak("folder not found please say again",stream)
-                    elif state == "show_picture":
-                        folder_path = os.path.join()             
+                               speak(f"{pending_label} folder not found please say again",stream)
                     elif state == "confirm":
                         if re.search(r"\byes\b", text):
                             state = "capturing"
                             print(f"[voiceThread] Capturing started for label '{pending_label}'. Say 'good' to take a photo, 'done' to finish.")
-                            speak("say good to take a photo",stream)
+                            speak("say yes or out to take a photo",stream)
               
                         elif re.search(r"\bno\b", text):
                             print("[voiceThread] Okay, say the label again.")
@@ -225,7 +222,7 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             state = "await_label"
                         else:
                             print("[voiceThread] Please say yes or no.")
-                            speak("please say yes or no again",stream)
+                            speak(f"Did you say {text}? please say yes or no again",stream)
 
                     elif state == "capturing":
                         if re.search(r"\bout\b", text):
@@ -237,17 +234,13 @@ def voice_label_thread(yolo, embedder, transform, cap, camera_lock, pause_event,
                             threading.Thread(target = upload_object_image, args = (img_path, label), daemon=True).start()
                             pending_label = None
                             pause_event.clear()
-                        elif re.search(r"\bgood\b", text):
+                        elif re.search(r"\byes\b", text):
                             label_dir = ensure_label_dir(pending_label)
                             idx = next_index(label_dir, pending_label)
-                            with camera_lock:
-                                cap.read()  
-                                ret, frame = cap.read()
-                                if ret:
-                                    frame = cv2.rotate(frame, cv2.ROTATE_180)
-                                    save_capture_and_vector(frame, yolo, embedder, transform, label_dir, pending_label, idx)
-                                    print(f"[voiceThread] Captured #{idx} for label '{pending_label}'")
-                            speak("say good to take more picture",stream)
+                            frame = frame_queue.get()
+                            save_capture_and_vector(frame, yolo, embedder, transform, label_dir, pending_label, idx)
+                            print(f"[voiceThread] Captured #{idx} for label '{pending_label}'")
+                            speak("say yes to take more picture",stream)
 
                     # --- delete flow ---
                     elif state == "delete_await_label":

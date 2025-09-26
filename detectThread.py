@@ -73,15 +73,15 @@ def async_upload(cls_dir, cls_name):
 # -------------------------
 # Detection Loop (Thread)
 # -------------------------
-def detection_loop(yolo, embedder, transform, target_root, source_root, cap, camera_lock, pause_event, frame_queue):
-
+def detection_loop(yolo, embedder, transform, target_root, source_root, cap, camera_lock, pause_event, frame_queue,annotated_queue):
+    boxes_to_draw = []  # frame에 그릴 정보 담을 리스트
     LAST_ROOT = "/home/pi/SmartGlassesFinderRaspberryPi/last"
     last_yolo_time = 0
     YOLO_INTERVAL = 1.0  # 1초마다 실행  
     IMG_SIZE = 640
     SIM_THR = 0.75
     cooldown_seconds = 10.0
-    upload_pic = 60.0
+    upload_pic = 10.0
     LCD_WIDTH = 480
     LCD_HEIGHT = 320
     last_saved_time_by_cls = defaultdict(float)
@@ -101,81 +101,71 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                 shutil.rmtree(target_root)
             os.makedirs(target_root, exist_ok=True)
             local_ref_by_class = make_ref_by_class(source_root)
+            print(f"[DEBUG] local_ref_by_class length: {len(local_ref_by_class)}")
+            print(f"[DEBUG] keys: {list(local_ref_by_class.keys())}")
             for cls_name in local_ref_by_class.keys():
                 os.makedirs(os.path.join(target_root, cls_name), exist_ok=True)
             folder_initialized = True
             print("[YOLO Thread] Target folders initialized")
 
-        with camera_lock:
-            ret, frame = cap.read()
-        if not ret:
-            continue
-        frame_to_show = frame.copy()
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        if not frame_queue.full():  # 큐가 가득 차면 덮어쓰기 방지
-            frame_queue.put(gray)
-
-        time.sleep(0.01)  # CPU 절약
+        frame_to_show = frame_queue.get()
         now = time.monotonic()
         if now - last_yolo_time >= YOLO_INTERVAL:
             last_yolo_time = now
-            frame_to_save = frame.copy()
+            frame_to_save = frame_to_show.copy()
+            frame_to_box = frame_to_save.copy()
             with torch.inference_mode():
-                res = yolo(frame_to_save, size=IMG_SIZE)
+                res = yolo(frame_to_save, size=640)
                 det = res.xyxy[0].cpu().numpy() if hasattr(res, "xyxy") else res.pred[0].cpu().numpy()
-
+                
             if det is None or len(det) == 0:
                 print("no box captured",flush=True)
                 continue
-
+            print(f"{len(det)}")
             for box in det:
                 x1, y1, x2, y2, conf, cls = box
                 x1,y1,x2,y2 = map(int, [x1,y1,x2,y2])
+                print("int box coords:", x1, y1, x2, y2)
                 if x2 <= x1 or y2 <= y1:
+                    print("error error")
                     continue
-                if conf <0.4:
+                if conf < 0.4:
                     continue
                 crop = frame_to_save[y1:y2, x1:x2]
-                crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-
+                crop_rgb = crop
                 with torch.no_grad():
                     q = embedder(transform(crop_rgb).unsqueeze(0)).squeeze().float()
-               
-                yolo_class_confidences = {str(int(int(cls_id))): float(conf) for cls_id, conf in zip(det[:, 5], det[:, 4])}
-                top3_cls = sorted(yolo_class_confidences.items(), key=lambda x: x[1], reverse=True)[:3]
                 
                 now_mono = time.monotonic()
-                for cls_id, cls_conf in top3_cls:
-                  found = False
-                  for label_name, ref_vecs in local_ref_by_class.items():
+                check = False
+                for label_name, ref_vecs in local_ref_by_class.items():
+                    
                     for ref_vec, ref_cls in ref_vecs:
-                      if int(ref_cls) != int(cls_id):
-                        continue 
-
-                      sims = cosine_similarity(q, ref_vec)
-                      if sims >= SIM_THR and (now_mono - last_saved_time_by_cls[label_name] > cooldown_seconds):
-                        cv2.rectangle(frame_to_show, (x1, y1), (x2, y2), (0, 255, 0), 2)  # 녹색 박스
-                        cv2.putText(frame_to_show, f"{label_name} {sims:.2f}",(x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-                        out_dir = os.path.join(target_root, label_name)
-                        last_dir = os.path.join(LAST_ROOT,label_name)
-                        save_image_to_dir(frame_to_save, out_dir)
-                        save_image_to_dir(frame_to_save, last_dir)
-                        maintain_last_images(last_dir,max_count = 10)
-                        last_saved_time_by_cls[label_name] = now_mono
-                        last_detected_time_by_cls[label_name] = now_mono
-                        print(f"[YOLO Thread] Saved: {label_name}, similarity={sims:.2f}",flush=True)
-                        found = True
-                        break
-                    if found:
-                        break
-                  
-        
+                        boxes_to_draw = []
+                        sims = cosine_similarity(q, ref_vec)
+                        print(f"{sims}")
+                        if sims >= SIM_THR and (now_mono - last_saved_time_by_cls[label_name] > cooldown_seconds):
+                           boxes_to_draw.append((x1, y1, x2, y2))
+                           out_dir = os.path.join(target_root, label_name)
+                           last_dir = os.path.join(LAST_ROOT,label_name)
+                           save_image_to_dir(frame_to_save, out_dir)
+                           save_image_to_dir(frame_to_save, last_dir)
+                           maintain_last_images(last_dir,max_count = 10)
+                           last_saved_time_by_cls[label_name] = now_mono
+                           last_detected_time_by_cls[label_name] = now_mono
+                           print(f"[YOLO Thread] Saved: {label_name}, similarity={sims:.2f}",flush=True) 
+                           check = True
+                           break
+                if annotated_queue.full():
+                    _ = annotated_queue.get()
+                if check is not True:
+                    annotated_queue.put([])
+                else: 
+                    annotated_queue.put(boxes_to_draw)
+                          
         for cls_name, t_last in list(last_detected_time_by_cls.items()):
             if t_last > 0 and (now_mono - t_last) > upload_pic:
                 cls_dir = os.path.join(target_root, cls_name)
                 threading.Thread(target=async_upload, args=(cls_dir, cls_name), daemon=True).start()
                 last_detected_time_by_cls[cls_name] = 0.0
                 
-    cap.release()
-    cv2.destroyAllWindows()

@@ -77,7 +77,7 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
     boxes_to_draw = []  # frame에 그릴 정보 담을 리스트
     LAST_ROOT = "/home/pi/SmartGlassesFinderRaspberryPi/last"
     last_yolo_time = 0
-    YOLO_INTERVAL = 1.0  # 1초마다 실행  
+    YOLO_INTERVAL = 0  # 1초마다 실행  
     IMG_SIZE = 640
     SIM_THR = 0.75
     cooldown_seconds = 10.0
@@ -110,6 +110,8 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
 
         frame_to_show = frame_queue.get()
         now = time.monotonic()
+        boxes_to_draw = []
+        fps_time = time.monotonic()
         if now - last_yolo_time >= YOLO_INTERVAL:
             last_yolo_time = now
             frame_to_save = frame_to_show.copy()
@@ -129,8 +131,8 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                 if x2 <= x1 or y2 <= y1:
                     print("error error")
                     continue
-                if conf < 0.4:
-                    continue
+                #if conf < 0.4:
+                 #   continue
                 crop = frame_to_save[y1:y2, x1:x2]
                 crop_rgb = crop
                 with torch.no_grad():
@@ -138,6 +140,7 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                 
                 now_mono = time.monotonic()
                 check = False
+                boxes_to_draw.append((x1,y1,x2,y2))
                 for label_name, ref_vecs in local_ref_by_class.items():
                     
                     for ref_vec, ref_cls in ref_vecs:
@@ -158,10 +161,12 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                            break
                 if annotated_queue.full():
                     _ = annotated_queue.get()
-                if check is not True:
-                    annotated_queue.put([])
-                else: 
-                    annotated_queue.put(boxes_to_draw)
+                #if check is not True:
+                  #  annotated_queue.put([])
+               # else: 
+                now_time = time.monotonic()
+                print(f"{now_time - fps_time}")
+                annotated_queue.put(boxes_to_draw)
                           
         for cls_name, t_last in list(last_detected_time_by_cls.items()):
             if t_last > 0 and (now_mono - t_last) > upload_pic:

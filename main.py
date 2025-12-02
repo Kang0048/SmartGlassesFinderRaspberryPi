@@ -1,6 +1,6 @@
 # main.py
 import threading, time, cv2
-from detectThread import detection_loop
+from testDet import detection_loop
 from captureThread import voice_label_thread
 import torch
 from torchvision.models import resnet18
@@ -13,7 +13,7 @@ from match_utils import make_vector_folder, find_working_camera
 source_root = '/home/pi/SmartGlassesFinderRaspberryPi/objects'
 target_root = '/home/pi/SmartGlassesFinderRaspberryPi/detected_matches'
 REPO_DIR    = '/home/pi/SmartGlassesFinderRaspberryPi/yolov5'
-WEIGHTS     = '/home/pi/SmartGlassesFinderRaspberryPi/yolov5s.pt'
+WEIGHTS     = '/home/pi/SmartGlassesFinderRaspberryPi/yolov5n.pt'
 FIREBASE_CRED_PATH = '/home/pi/SmartGlassesFinderRaspberryPi/smartglassesfinder-firebase-adminsdk-fbsvc-4e79e15856.json'
 BUCKET_NAME = 'smartglassesfinder.appspot.com'
 preview_frame = None
@@ -88,6 +88,7 @@ def main():
                   cv2.destroyWindow("last_pic_detected")
                if not annotated_queue.empty():
                   boxes_to_draw = annotated_queue.get()
+               #print("boxes_to_draw:", boxes_to_draw)
                for (x1, y1, x2, y2) in boxes_to_draw:
                      cv2.rectangle(copy_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                cv2.imshow("Camera Preview", copy_frame)
@@ -107,7 +108,7 @@ def main():
                if preview_frame is not None:
                   cv2.imshow("last_pic_detected", preview_frame)
        
-         key = cv2.waitKey(30) & 0xFF
+         key = cv2.waitKey(1) & 0xFF
          if key == ord('q'):
             break
 

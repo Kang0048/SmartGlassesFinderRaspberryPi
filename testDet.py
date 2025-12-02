@@ -153,7 +153,7 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                 tid = t.track_id
                 x1, y1, x2, y2 = map(int, t.tlbr)
                 q = embedding_cache[tid]
-                boxes_to_draw.append((x1,y1,x2,y2))
+                #boxes_to_draw.append((x1,y1,x2,y2))
                 print(f"{x1}, {y1}, {x2}, {y2} : 좌표값")
                 now_mono = time.monotonic()
                 check = False
@@ -170,12 +170,13 @@ def detection_loop(yolo, embedder, transform, target_root, source_root, cap, cam
                             last_saved_time_by_cls[label_name] = now_mono
                             last_detected_time_by_cls[label_name] = now_mono
                             check = True
+                            print('식별됨')
                             break
                 now_time = time.monotonic()
                 print(f"{now_time - fps_time}")
                 if annotated_queue.full():
                    _ = annotated_queue.get()
-                annotated_queue.put(boxes_to_draw)
+            annotated_queue.put(boxes_to_draw)
                 
         # --------------------------
         # 일정 시간 지나면 업로드
